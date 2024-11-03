@@ -16,6 +16,8 @@ import {
   GenerateSummaryType,
 } from '@/utils/schema/generateSummary';
 import { zodResolver } from '@hookform/resolvers/zod';
+import 'axios';
+import axios from 'axios';
 import { useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -33,13 +35,25 @@ function GenerateSummaryForm() {
     socketClient: socketConnection.socketClient,
   });
 
-  const onSubmit = useCallback((data: GenerateSummaryType) => {
-    console.log('Form submitted:', data);
-    // Here you would typically send the data to an API
-    // form.reset();
-  }, []);
+  const onSubmit = useCallback(
+    async (data: GenerateSummaryType) => {
+      console.log('Form submitted:', data);
 
-  console.log('progress', progress, isLoading, connectionStatus);
+      const BASE_URL = import.meta.env.VITE_BASE_URL;
+      try {
+        const resp = await axios.post(`${BASE_URL}/summary`, {
+          text: data.text,
+          groupSize: data.number,
+          clientId: socketConnection.socketClient.id,
+        });
+
+        console.log('response', resp);
+      } catch (error) {
+        console.log('error occured while submitting the form', error);
+      }
+    },
+    [socketConnection.socketClient.id],
+  );
 
   return (
     <Form {...form}>
@@ -52,7 +66,7 @@ function GenerateSummaryForm() {
           name='text'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Large Text Input</FormLabel>
+              <FormLabel>Text</FormLabel>
               <FormControl>
                 <Textarea
                   placeholder='Enter your large blob of text here...'
@@ -70,7 +84,7 @@ function GenerateSummaryForm() {
           name='number'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Number Input</FormLabel>
+              <FormLabel>Number of Sentences</FormLabel>
               <FormControl>
                 <Input
                   type='number'
