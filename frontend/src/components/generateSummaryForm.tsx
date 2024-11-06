@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 import { useProgressUpdate } from '@/hooks/useProgressUpdate';
 import useSockets from '@/hooks/useSocket';
 import {
@@ -23,6 +24,7 @@ import { useForm } from 'react-hook-form';
 
 function GenerateSummaryForm() {
   const { connectionStatus, socketConnection } = useSockets();
+  const { toast } = useToast();
   const form = useForm<GenerateSummaryType>({
     resolver: zodResolver(generateSummarySchema),
     defaultValues: {
@@ -49,8 +51,22 @@ function GenerateSummaryForm() {
 
         console.log('response', resp);
         setIsLoading(true);
-      } catch (error) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
         console.log('error occured while submitting the form', error);
+        if ('status' in error && error.status == 429) {
+          toast({
+            title: 'Too Many Requests',
+            variant: 'destructive',
+            description: 'Please try again after a few minutes',
+          });
+        } else {
+          toast({
+            title: 'Something went wrong',
+            variant: 'destructive',
+            description: 'Please try again',
+          });
+        }
       }
     },
     [socketConnection.socketClient.id],
@@ -107,7 +123,7 @@ function GenerateSummaryForm() {
           type='submit'
           className='w-full'
         >
-          {isLoading ? `Summarising: ${progress ?? 0}%` : 'Submit'}
+          {isLoading ? `Summarising: ${progress}%` : 'Submit'}
         </Button>
       </form>
     </Form>

@@ -14,7 +14,7 @@ export function useProgressUpdate({
   socketClient: Socket<any, any>;
 }) {
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState('');
+  const [progress, setProgress] = useState('0');
 
   const onProgressUpdate = useCallback(
     ({ progressUpdate, state }: ProgressUpdate) => {
