@@ -1,8 +1,8 @@
 import { JsonOutputParser } from '@langchain/core/output_parsers';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { ChatOpenAI } from '@langchain/openai';
-import { TokenTextSplitter } from '@langchain/textsplitters';
 import { Injectable } from '@nestjs/common';
+import { splitArrayIntoChunks, splitBySentences } from 'src/utils/helper';
 import { GenerateSummaryDto } from './dto/GenerateSummary.dto';
 import { SummaryGateway } from './summary.gateway';
 
@@ -22,17 +22,17 @@ export class SummaryService {
   private readonly promptTemplate = ChatPromptTemplate.fromMessages([
     [
       'system',
-      'Take the following large block of text eliminated by back quotes and break it into chunks of {chunk_size} sentences each. For each chunk, create a one-line summary. Return the data in JSON format, with each entry containing the `chunk` (the full {chunk_size}-sentence section) and its `summary` (the one-line summary for that section).',
+      'Take the following array, which contains exactly {chunks} strings. For each string, create a one-line summary. Return only the summaries in a JSON array format, with each summary matching the corresponding position in the input array. The output array must have exactly {chunks} summaries and no more. Summarize each string only once, without adding or omitting any entries, regardless of input array size. Ensure that each summary corresponds exactly to its input, and no extra summaries are included. Do not omit any input strings, no matter how small they are in length or nonsensical they are',
     ],
     ['user', '{text}'],
   ]);
 
   private readonly responseParser = new JsonOutputParser();
 
-  private readonly textSplitter = new TokenTextSplitter({
-    chunkSize: 2000,
-    chunkOverlap: 100,
-  });
+  // private readonly textSplitter = new TokenTextSplitter({
+  //   chunkSize: 1000,
+  //   chunkOverlap: 0,
+  // });
 
   private readonly summaryGenerationChain = this.promptTemplate
     .pipe(
@@ -44,30 +44,33 @@ export class SummaryService {
     )
     .pipe(this.responseParser);
 
-  async splitTextByTokenLength(prompt: string) {
-    const token_text = await this.textSplitter.splitText(prompt);
+  // async splitTextByTokenLength(prompt: string) {
+  //   const token_text = await this.textSplitter.splitText(prompt);
 
-    console.log('length of tokens', token_text.length);
+  //   console.log('length of tokens', token_text.length);
 
-    return token_text;
-  }
+  //   return token_text;
+  // }
 
   async splitTextInGroups({ clientId, text, groupSize }: GenerateSummaryDto) {
-    const text_groups = await this.splitTextByTokenLength(text);
+    // const text_groups = await this.splitTextByTokenLength(text);
 
-    this.generateSummary({ clientId, sentenceGroups: text_groups, groupSize });
+    const text_array = splitBySentences({ text, size: groupSize });
 
-    return { success: true };
+    const grouped_array = splitArrayIntoChunks({
+      arr: text_array,
+      chunkSize: 12,
+    });
+
+    this.generateSummary({ clientId, sentenceGroups: grouped_array });
   }
 
   async generateSummary({
     clientId,
     sentenceGroups,
-    groupSize,
   }: {
-    sentenceGroups: string[];
+    sentenceGroups: string[][];
     clientId: string;
-    groupSize: number;
   }) {
     try {
       const totalGroups = sentenceGroups.length;
@@ -75,14 +78,23 @@ export class SummaryService {
       let counter = 0;
       for await (const sentence of sentenceGroups) {
         const summary = await this.summaryGenerationChain.invoke({
-          text: sentence,
-          chunk_size: groupSize,
+          text: JSON.stringify(sentence),
+          chunks: sentence.length,
         });
+
+        const summaryArray = summary[Object.keys(summary)[0]];
+
+        const combined: any = sentence.map((item, index) => ({
+          chunk: item,
+          summary: summaryArray?.[index] ?? '',
+        }));
 
         const { success } = this.summaryGateway.sendMessageToClient({
           channel: 'SUMMARY',
           clientId,
-          data: summary,
+          data: {
+            chunks: combined,
+          },
         });
 
         if (!success) {

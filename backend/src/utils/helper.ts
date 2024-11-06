@@ -54,3 +54,17 @@ export function splitBySentences({
 
   return groups;
 }
+
+export function splitArrayIntoChunks({
+  arr,
+  chunkSize = 20,
+}: {
+  arr: string[];
+  chunkSize?: number;
+}): Array<string[]> {
+  const result = [];
+  for (let i = 0; i < arr.length; i += chunkSize) {
+    result.push(arr.slice(i, i + chunkSize));
+  }
+  return result;
+}
