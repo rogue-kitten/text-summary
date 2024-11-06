@@ -31,13 +31,13 @@ function GenerateSummaryForm() {
     },
   });
 
-  const { isLoading, progress } = useProgressUpdate({
+  const { isLoading, progress, setIsLoading } = useProgressUpdate({
     socketClient: socketConnection.socketClient,
   });
 
   const onSubmit = useCallback(
     async (data: GenerateSummaryType) => {
-      console.log('Form submitted:', data);
+      // console.log('Form submitted:', data);
 
       const BASE_URL = import.meta.env.VITE_BASE_URL;
       try {
@@ -48,6 +48,7 @@ function GenerateSummaryForm() {
         });
 
         console.log('response', resp);
+        setIsLoading(true);
       } catch (error) {
         console.log('error occured while submitting the form', error);
       }
@@ -106,7 +107,7 @@ function GenerateSummaryForm() {
           type='submit'
           className='w-full'
         >
-          {isLoading ? `Summarising: ${progress}%` : 'Submit'}
+          {isLoading ? `Summarising: ${progress ?? 0}%` : 'Submit'}
         </Button>
       </form>
     </Form>

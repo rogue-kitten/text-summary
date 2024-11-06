@@ -34,5 +34,5 @@ export function useProgressUpdate({
     };
   }, [socketClient, onProgressUpdate]);
 
-  return { isLoading, progress };
+  return { isLoading, progress, setIsLoading };
 }

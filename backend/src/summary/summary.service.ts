@@ -1,8 +1,8 @@
-import { StringOutputParser } from '@langchain/core/output_parsers';
+import { JsonOutputParser } from '@langchain/core/output_parsers';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { ChatGroq } from '@langchain/groq';
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { splitBySentences } from 'src/utils/helper';
+import { ChatOpenAI } from '@langchain/openai';
+import { TokenTextSplitter } from '@langchain/textsplitters';
+import { Injectable } from '@nestjs/common';
 import { GenerateSummaryDto } from './dto/GenerateSummary.dto';
 import { SummaryGateway } from './summary.gateway';
 
@@ -10,37 +10,52 @@ import { SummaryGateway } from './summary.gateway';
 export class SummaryService {
   constructor(private readonly summaryGateway: SummaryGateway) {}
 
-  private readonly model = new ChatGroq({
-    model: 'llama-3.2-3b-preview',
+  private readonly model = new ChatOpenAI({
+    model: 'gpt-4o-mini',
     temperature: 0,
-    apiKey: process.env.GROQ_API_KEY,
+    apiKey: process.env.OPENAI_API_KEY,
+    configuration: {
+      organization: process.env.OPENAI_API_ORG,
+    },
   });
 
-  private readonly system_message =
-    'Generate a one line summary for the following text';
-
   private readonly promptTemplate = ChatPromptTemplate.fromMessages([
-    ['system', this.system_message],
+    [
+      'system',
+      'Take the following large block of text eliminated by back quotes and break it into chunks of {chunk_size} sentences each. For each chunk, create a one-line summary. Return the data in JSON format, with each entry containing the `chunk` (the full {chunk_size}-sentence section) and its `summary` (the one-line summary for that section).',
+    ],
     ['user', '{text}'],
   ]);
 
-  private readonly responseParser = new StringOutputParser();
+  private readonly responseParser = new JsonOutputParser();
+
+  private readonly textSplitter = new TokenTextSplitter({
+    chunkSize: 2000,
+    chunkOverlap: 100,
+  });
 
   private readonly summaryGenerationChain = this.promptTemplate
-    .pipe(this.model)
+    .pipe(
+      this.model.bind({
+        response_format: {
+          type: 'json_object',
+        },
+      }),
+    )
     .pipe(this.responseParser);
 
-  splitTextInGroups({ clientId, text, groupSize }: GenerateSummaryDto) {
-    if (!this.summaryGateway.checkIfValidClient(clientId)) {
-      throw new HttpException(
-        'Invalid Socket ClientId',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+  async splitTextByTokenLength(prompt: string) {
+    const token_text = await this.textSplitter.splitText(prompt);
 
-    const sentenceGroups = splitBySentences({ text, size: groupSize });
+    console.log('length of tokens', token_text.length);
 
-    this.generateSummary({ clientId, sentenceGroups });
+    return token_text;
+  }
+
+  async splitTextInGroups({ clientId, text, groupSize }: GenerateSummaryDto) {
+    const text_groups = await this.splitTextByTokenLength(text);
+
+    this.generateSummary({ clientId, sentenceGroups: text_groups, groupSize });
 
     return { success: true };
   }
@@ -48,9 +63,11 @@ export class SummaryService {
   async generateSummary({
     clientId,
     sentenceGroups,
+    groupSize,
   }: {
     sentenceGroups: string[];
     clientId: string;
+    groupSize: number;
   }) {
     try {
       const totalGroups = sentenceGroups.length;
@@ -59,15 +76,13 @@ export class SummaryService {
       for await (const sentence of sentenceGroups) {
         const summary = await this.summaryGenerationChain.invoke({
           text: sentence,
+          chunk_size: groupSize,
         });
 
         const { success } = this.summaryGateway.sendMessageToClient({
           channel: 'SUMMARY',
           clientId,
-          data: {
-            sentence,
-            summary,
-          },
+          data: summary,
         });
 
         if (!success) {
@@ -76,19 +91,30 @@ export class SummaryService {
 
         counter += 1;
 
-        this.summaryGateway.sendMessageToClient({
-          channel: 'PROGRESS',
-          clientId,
-          data: {
-            state:
-              counter === 1
-                ? 'START'
-                : counter === totalGroups
-                  ? 'END'
-                  : 'PROGRESS',
-            progressUpdate: ((counter / totalGroups) * 100).toFixed(0),
-          },
-        });
+        if (totalGroups > 1) {
+          this.summaryGateway.sendMessageToClient({
+            channel: 'PROGRESS',
+            clientId,
+            data: {
+              state:
+                counter === 1
+                  ? 'START'
+                  : counter === totalGroups
+                    ? 'END'
+                    : 'PROGRESS',
+              progressUpdate: ((counter / totalGroups) * 100).toFixed(0),
+            },
+          });
+        } else {
+          this.summaryGateway.sendMessageToClient({
+            channel: 'PROGRESS',
+            clientId,
+            data: {
+              state: 'END',
+              progressUpdate: ((counter / totalGroups) * 100).toFixed(0),
+            },
+          });
+        }
       }
     } catch (error) {
       console.log('error while generating summary', error);

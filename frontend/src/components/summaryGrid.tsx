@@ -1,7 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 
 interface SummaryGridItemProps {
-  sentence: string;
+  chunk: string;
   summary: string;
 }
 
@@ -18,7 +18,7 @@ function SummaryGrid({ items = [] }: SummaryGridProps) {
             <CardContent className='grid gap-4 p-4 md:grid-cols-2'>
               <div className='space-y-2'>
                 <h3 className='text-lg font-semibold text-primary'>Sentence</h3>
-                <p className='text-muted-foreground'>{item.sentence}</p>
+                <p className='text-muted-foreground'>{item.chunk}</p>
               </div>
               <div className='space-y-2'>
                 <h3 className='text-lg font-semibold text-primary'>Summary</h3>

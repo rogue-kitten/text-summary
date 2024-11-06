@@ -3,8 +3,15 @@ import { Socket } from 'socket.io-client';
 import { ALL_CHANNELS } from '../utils/enum/channel';
 
 type SummaryNotification = {
-  sentence: string;
+  chunk: string;
   summary: string;
+};
+
+type SummarySocketResponse = {
+  chunks: {
+    chunk: string;
+    summary: string;
+  }[];
 };
 
 export function useSummary({
@@ -15,9 +22,9 @@ export function useSummary({
 }) {
   const [summary, setSummary] = useState<SummaryNotification[]>([]);
 
-  const onNewSummaryGeneration = useCallback((data: SummaryNotification) => {
+  const onNewSummaryGeneration = useCallback((data: SummarySocketResponse) => {
     // console.log('got new response from summary', data);
-    setSummary((prev) => [...prev, data]);
+    setSummary((prev) => prev.concat(data.chunks));
   }, []);
 
   useEffect(() => {
